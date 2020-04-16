@@ -1,9 +1,13 @@
 #!version:1.0.0.1
 
 
+# Datos de provisionamiento
 
 auto_provision.server.url = tftp://<?php echo $server_ip?>
 
+auto_provision.repeat.enable = 1
+
+auto_provision.repeat.minutes = 60
 
 
 
@@ -32,7 +36,7 @@ account.1.sip_server.1.expires = 60
 
 local_time.time_zone = -6
 
-local_time.time_zone_name = 'Mexico(Mexico City, Acapulco)'
+local_time.time_zone_name = Mexico(Mexico City,Acapulco)
 
 local_time.ntp_server1 = <?php echo $server_ip?>
 
@@ -60,6 +64,13 @@ linekey.2.type = 15
 
 linekey.2.line = 1
 
+linekey.3.type = 15
+
+linekey.3.line = 1
+
+linekey.4.type = 15
+
+linekey.5.line = 1
 
 
 lang.wui = English
@@ -74,3 +85,10 @@ remote_phonebook.data.1.url=tftp://<?php echo $server_ip?>/directorio-yealink.xm
 
 remote_phonebook.data.1.name=Directorio
 
+
+
+### Conferencia Remota
+
+#account.1.conf_type=2
+
+#account.1.conf_uri=85<?php echo $extension?>
