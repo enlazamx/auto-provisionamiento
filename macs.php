@@ -2,18 +2,18 @@
 <?php
 /***************************************************************
   Generador de archivos de configuración para teléfonos Aastra
-	Este archivo no debe modificarse. Todo debe estar contenido en el 
+	Este archivo no debe modificarse. Todo debe estar contenido en el
 	config.inc.php dentro de este mismo directorio
 ****************************************************************
 	Formato de uso:
 		./macs.php [plantilla] [archivo csv]
 	Donde:
-		[plantilla]		aastra, yealink o cisco (default: yealink)
+		[plantilla]		aastra, yealink, cisco o grandstream (default: yealink)
 		[archivo csv]	archivo que contiene la relación de macs y extensiones (default: macs.csv)
 
 	Ejemplo:
 		./macs.php yealink macs.csv
-		./macs.php aastra 
+		./macs.php aastra
 
 
 	Formato de archivo macs.csv
@@ -26,15 +26,18 @@
 	secret			Contraseña de la extensión [opcional, se toma de la BD]
 	ipaddress		Dirección IP [opcional]
 	netmask			Máscara de red [opcional]
-	gateway			Gateway [opcional]	
+	gateway			Gateway [opcional]
 */
 
 require_once('config.inc.php');
 
+if (!isset($tmpdir))
+	$tmpdir = '/tmp/';
+
 $valid_headers = array('mac','extension','ipaddress','netmask','gateway','display_name','secret');
 
 // Tomamos la plantilla a partir de lo que el usuario proporcionó
-if (in_array(@$argv[1],array('yealink','aastra','cisco'))) {
+if (in_array(@$argv[1],array('yealink','aastra','cisco','grandstream','fanvil'))) {
 	echo "Utilizando plantilla para ".$argv[1] . "\n";
 	$template_name = $argv[1];
 }
@@ -48,7 +51,7 @@ if ((isset($argv[2])) && (file_exists($argv[2])))
 	$mac_file = $argv[2];
 
 // Si no existe el archivo de plantilla, terminar
-if (!file_exists($template_dir . "template.$template_name.php"))
+if (!file_exists("template.$template_name.php"))
 	die("No existe el archivo template.$template_name.php. Terminando.");
 if (!file_exists($mac_file))
 	die("No existe archivo de direcciones MAC. Abortando.");
@@ -79,7 +82,7 @@ if ($freepbx) {
 		echo "Encontramos ".count($array)." registros SIP en la tabla\n";
 }
 
-	
+
 
 
 // Procesamos archivo de MACs
@@ -103,11 +106,11 @@ while (($linea = fgetcsv($handle,1000,$separador)) !== FALSE) {
 	// Linea no contiene los valores minimos
 	if (count($linea) < 2)
 		continue;
-	
+
 	$mac	   = strtoupper(str_replace(array(':','-',' '),'',$linea[array_search('mac',$headers)]));
 	$extension = $linea[array_search('extension',$headers)];
 
-	
+
 	// Tomamos los valores de la BD
 	if ($freepbx) {
 		$secret 		= $array[$extension]['secret'];
@@ -124,31 +127,39 @@ while (($linea = fgetcsv($handle,1000,$separador)) !== FALSE) {
 		$netmask	= $linea[array_search('netmask',$headers)];
 		$gateway	= $linea[array_search('gateway',$headers)];
 	}
-	
-	if ($debug) {
-		echo "------\n         MAC: $mac\n   Extension: $extension\nDisplay name: $display_name\n      Secret: $secret\n";
-		if ($linea[array_search('ipaddress',$headers)]) 
-			echo "  IP Address: $ipaddress\n     Netmask: $netmask\n     Gateway: $gateway\n\n";
-	}
-	
-	// Cargamos la plantilla
+
+	// Cargamos el template
 	ob_start();
-	include $template_dir . "template.$template_name.php";
+	include "template.$template_name.php";
 	$content = ob_get_clean();
 
-	
-	// Especificamos los nombres de archivo según la marca lo requiere
 	if ($template_name == 'aastra')
-		$filename = $dir . strtoupper($mac). '.cfg';
+		$myfile = strtoupper($mac). '.cfg';
 	elseif ($template_name == 'cisco')
-		$filename = $dir . 'spa'.strtolower(substr($mac,0,2).':'.substr($mac,2,2).':'.substr($mac,4,2).':'.substr($mac,6,2).':'.substr($mac,8,2).':'.substr($mac,10,2)). '.xml';
-	else	// Default: Yealink
-		$filename = $dir . strtolower($mac). '.cfg';
+		$myfile = 'spa'.strtolower(substr($mac,0,2).':'.substr($mac,2,2).':'.substr($mac,4,2).':'.substr($mac,6,2).':'.substr($mac,8,2).':'.substr($mac,10,2)). '.xml';
+	elseif ($template_name == 'grandstream')
+		$myfile = 'cfg'.strtolower($mac). '.xml';
+	else
+		$myfile = strtolower($mac). '.cfg';
+	$filename = $tmpdir . $myfile;
 
 	$newfile = fopen($filename,'w');
 	fputs($newfile,$content);
 	fclose($newfile);
-	echo "Generado $filename - ". $extension . ' ' . $display_name . "\n";
+
+	// Analizamos si el archivo nuevo tiene el mismo contenido que el anterior. Si es igual, no escribimos nada.
+	if (!file_exists($dir.$myfile) OR (md5_file($filename) != md5_file($dir.$myfile))) {
+			echo "Generado $filename - ". $extension . ' ' . $display_name . "\n";
+			rename($filename, $dir . $myfile);
+			if ($debug) {
+				echo "------\n         MAC: $mac\n   Extension: $extension\nDisplay name: $display_name\n      Secret: $secret\n";
+			if ($linea[array_search('ipaddress',$headers)])
+				echo "  IP Address: $ipaddress\n     Netmask: $netmask\n     Gateway: $gateway\n\n";
+		}
+	}
+	else {
+			printf("Archivo %s %s %s sin cambios\n",$dir . $myfile,$extension,$display_name);
+	}
 	$n++;
 }
 fclose($handle);
@@ -178,7 +189,7 @@ else {
 	foreach ($array as $extension => $x) {
 		$string .= sprintf($string_base,$x['display_name'],$extension);
 	}
-	$string = "<DirectorioIPPhoneDirectory>\n".$string."</DirectorioIPPhoneDirectory>";
+	$string = "<?xml version='1.0' encoding='UTF-8' standalone='no' ?>\n<DirectorioIPPhoneDirectory>\n".$string."</DirectorioIPPhoneDirectory>";
 }
 echo "Creando $dir$directorio_filename";
 $handle = fopen($dir.$directorio_filename,'w');
